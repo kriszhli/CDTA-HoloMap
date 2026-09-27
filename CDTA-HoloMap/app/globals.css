@@ -17,3 +17,5 @@
 .bus-marker[aria-pressed="true"]{background:var(--bus-color);color:#081116;box-shadow:0 0 18px var(--bus-color)}
 .follow-status{position:absolute;right:26px;top:100px;z-index:4;display:flex;align-items:center;gap:10px;background:#0b1a21ed;border:1px solid #ff963e88;color:#ffad69;padding:10px 12px;font:11px ui-monospace,monospace}.follow-status small{display:block;margin-top:5px;color:#92adb5;font-size:9px}.follow-status button{display:grid;place-items:center;border:0;background:transparent;color:#d6e7eb;padding:6px}
 @media(max-width:640px){.follow-status{top:auto;bottom:151px;left:14px;right:auto;max-width:calc(100vw - 80px)}}
+
+.gesture-hint{position:absolute;left:26px;bottom:88px;z-index:3;color:#8dacb4;font:10px ui-monospace,monospace;pointer-events:none}@media(max-width:640px){.gesture-hint{display:none}}

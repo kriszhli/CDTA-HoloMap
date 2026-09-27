@@ -34,3 +34,5 @@ A stopped report sets the target speed to zero. Repeated or older reports never 
 Scope intentionally excludes timetable UI, arrivals, route planning, and accounts. The UI includes all bus routes in the current CDTA catalog, with Albany routes selected initially. Development is local only. Commit each completed change to Git.
 
 Click a bus label or model to follow its predicted position. Drag the map, press Escape, choose Fit selected buses, or click Stop following to release the camera. Following ends when that bus is hidden or its location expires.
+
+Trackpad: swipe sideways with two fingers to rotate in either 2D or 3D. Shift + scroll also rotates. Vertical scrolling and pinch keep zooming; rotation preserves the current pitch and bus-follow target.

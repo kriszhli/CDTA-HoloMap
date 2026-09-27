@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import { enableTrackpadRotation } from './trackpad.mjs';
+const canvas = new EventTarget();
+canvas.clientWidth = 800;
+let bearing = 0, pitch = 0, zoom = 15;
+const map = { getCanvas: () => canvas, getBearing: () => bearing, setBearing: value => { bearing = value; } };
+const cleanup = enableTrackpadRotation(map);
+function wheel(values) {
+  const event = new Event('wheel', { cancelable: true });
+  Object.assign(event, { deltaX: 0, deltaY: 0, deltaMode: 0, ...values });
+  canvas.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+assert.equal(wheel({ deltaX: 50, deltaY: 3 }), true);
+assert.equal(bearing, 10);
+assert.equal(pitch, 0);
+pitch = 60;
+assert.equal(wheel({ deltaY: -25, shiftKey: true }), true);
+assert.equal(bearing, 5);
+assert.equal(pitch, 60);
+assert.equal(zoom, 15);
+assert.equal(wheel({ deltaY: 40 }), false, 'Vertical scrolling remains zoom');
+assert.equal(wheel({ deltaX: 50, ctrlKey: true }), false, 'Pinch remains zoom');
+assert.equal(bearing, 5);
+wheel({ deltaX: 2, deltaMode: 1 });
+assert.equal(bearing, 11.4);
+cleanup();
+assert.equal(wheel({ deltaX: 50 }), false);
+assert.equal(bearing, 11.4);
+console.log('Trackpad rotation checks passed: both views, modifiers, zoom passthrough, units, cleanup.');

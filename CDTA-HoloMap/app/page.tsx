@@ -7,6 +7,7 @@ import type { HoloVehicle } from '@/lib/hologram-map';
 import { Checkbox } from '@/components/ui/checkbox';
 import routeData from '@/data/routes.json';
 import { freshVehicles, MAX_AGE } from '@/lib/vehicles.mjs';
+import { enableTrackpadRotation } from '@/lib/trackpad.mjs';
 import { updateMotion, positionAt } from '@/lib/motion.mjs';
 
 type Vehicle = { id: string; routeId: string; lat: number; lng: number; tripId: string | null; shapeId: string | null; speed: number | null; stopped: boolean; timestamp: number };
@@ -70,6 +71,8 @@ export default function Home() {
         },
         maxPitch: 75, canvasContextAttributes: { antialias: true }, attributionControl: { compact: true } });
       map.current = instance;
+      const removeTrackpadRotation = enableTrackpadRotation(instance);
+      instance.on('remove', removeTrackpadRotation);
       instance.addControl(new GL.NavigationControl({ visualizePitch: true }), 'bottom-right');
       instance.on('load', () => {
         if (disposed) return;
@@ -283,6 +286,7 @@ export default function Home() {
     </aside>
     <section className="map-region" aria-label="Live bus map">
       <div ref={mapElement} className="map"/>
+      <div className="gesture-hint">Two-finger swipe sideways to rotate · Scroll / pinch to zoom</div>
       <div className="holo-overlay" aria-hidden="true"/>
       <div className="map-title"><span>CDTA NETWORK</span><strong>ALBANY<span> / NY</span></strong><small>{flat ? 'PLAN VIEW' : 'HOLOGRAPHIC VIEW'} <i/> REAL-TIME VEHICLES</small></div>
       <div className="camera-readout" aria-hidden="true">{camera.lat.toFixed(4)}° N · {Math.abs(camera.lng).toFixed(4)}° W <span>HDG {((camera.bearing + 360) % 360).toFixed(0).padStart(3, '0')}°</span></div>
