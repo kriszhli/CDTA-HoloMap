@@ -6,10 +6,10 @@ import type * as Leaflet from 'leaflet';
 import { Checkbox } from '@/components/ui/checkbox';
 import routes from '@/data/routes.json';
 import { freshVehicles, MAX_AGE } from '@/lib/vehicles.mjs';
-import { updateMotion, positionAt } from '@/lib/motion.mjs';
+import { updateMotion, positionAt, pointAt } from '@/lib/motion.mjs';
 
 type Vehicle = { id: string; routeId: string; lat: number; lng: number; tripId: string | null; shapeId: string | null; speed: number | null; stopped: boolean; timestamp: number };
-type Path = { points: [number, number, number][]; speed: number };
+type Path = { routeIds: string[]; arrowRouteIds: string[]; points: [number, number, number][]; speed: number };
 type Feed = { timestamp: number; vehicles: Vehicle[] };
 const initialRoutes = ['1', '10', '12', '905'];
 const routeById = new Map(routes.map(r => [r.id, r]));
@@ -28,6 +28,7 @@ export default function Home() {
   const mapElement = useRef<HTMLDivElement>(null);
   const map = useRef<Leaflet.Map | null>(null);
   const library = useRef<typeof Leaflet | null>(null);
+  const routeArrows = useRef<{ marker: Leaflet.Marker; glyph: HTMLElement; path: Path; offset: number; length: number; speed: number }[]>([]);
   const markers = useRef(new Map<string, Leaflet.Marker>());
   const visible: Vehicle[] = freshVehicles(feed?.vehicles ?? [], now).filter((v: Vehicle) => selected.includes(v.routeId));
   const stale = !!feed && (now - feed.timestamp > MAX_AGE || feed.timestamp > now + 30);
@@ -40,6 +41,12 @@ export default function Home() {
       library.current = L;
       const instance = L.map(mapElement.current, { zoomControl: false }).setView([42.683, -73.79], 12);
       map.current = instance;
+      for (const [name, zIndex] of [['routePaths', '410'], ['routeArrows', '420']]) {
+        const pane = instance.createPane(name);
+        pane.style.zIndex = zIndex;
+        pane.style.opacity = '0.5';
+        pane.style.pointerEvents = 'none';
+      }
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       }).addTo(instance).on('tileerror', () => setMapError('Map tiles could not load. Check your connection.'));
@@ -62,6 +69,52 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    const L = library.current, instance = map.current;
+    if (!L || !instance || !ready) return;
+    const lines = L.layerGroup().addTo(instance);
+    const arrows = L.layerGroup().addTo(instance);
+    const selectedPaths = Object.values(paths).filter(path => path.routeIds.some(id => selected.includes(id)));
+    for (const path of selectedPaths) {
+      const route = routeById.get(path.routeIds.find(id => selected.includes(id))!);
+      L.polyline(path.points.map(([lat, lng]) => [lat, lng]), {
+        pane: 'routePaths', color: route?.color ?? '#123573', weight: 6,
+        opacity: 1, interactive: false, className: 'selected-route-path',
+      }).addTo(lines);
+    }
+    function rebuildArrows() {
+      if (!L || !instance) return;
+      arrows.clearLayers();
+      routeArrows.current = [];
+      const center = instance.getSize().divideBy(2);
+      const metresPerPixel = instance.distance(instance.containerPointToLatLng(center), instance.containerPointToLatLng(center.add([100, 0]))) / 100;
+      for (const path of selectedPaths) {
+        const routeId = path.arrowRouteIds.find(id => selected.includes(id));
+        if (!routeId) continue;
+        const length = path.points.at(-1)![2];
+        if (!length) continue;
+        const count = Math.min(80, Math.max(1, Math.floor(length / (metresPerPixel * 110))));
+        for (let i = 0; i < count; i++) {
+          const glyph = document.createElement('span');
+          glyph.className = 'route-arrow-glyph';
+          glyph.style.background = routeById.get(routeId)?.color ?? '#123573';
+          const marker = L.marker(pointAt(path, length * i / count) as [number, number], {
+            pane: 'routeArrows', interactive: false, keyboard: false,
+            icon: L.divIcon({ html: glyph, className: 'route-arrow', iconSize: [16, 14], iconAnchor: [8, 7] }),
+          }).addTo(arrows);
+          routeArrows.current.push({ marker, glyph, path, offset: length * i / count, length, speed: metresPerPixel * 22 });
+        }
+      }
+    }
+    rebuildArrows();
+    instance.on('zoomend', rebuildArrows);
+    return () => {
+      instance.off('zoomend', rebuildArrows);
+      routeArrows.current = [];
+      lines.remove(); arrows.remove();
+    };
+  }, [selected, paths, ready]);
+
+  useEffect(() => {
     const ids = new Set(feed?.vehicles.map(v => v.id));
     motion.current.forEach((_, id) => { if (!ids.has(id)) motion.current.delete(id); });
     for (const vehicle of feed?.vehicles ?? []) {
@@ -81,6 +134,16 @@ export default function Home() {
       markers.current.forEach((marker, id) => {
         const model = motion.current.get(id);
         if (model && time - model.report.timestamp <= MAX_AGE) marker.setLatLng(positionAt(model, time) as [number, number]);
+      });
+      const phase = performance.now() / 1000;
+      routeArrows.current.forEach(({ marker, glyph, path, offset, length, speed }) => {
+        const distance = (offset + phase * speed) % length;
+        const position = pointAt(path, distance);
+        const behind = pointAt(path, Math.max(0, distance - 15));
+        const ahead = pointAt(path, Math.min(length, distance + 15));
+        const angle = Math.atan2(-(ahead[0] - behind[0]), (ahead[1] - behind[1]) * Math.cos(position[0] * Math.PI / 180)) * 180 / Math.PI;
+        marker.setLatLng(position as [number, number]);
+        glyph.style.transform = `rotate(${angle}deg)`;
       });
       frame = requestAnimationFrame(animate);
     }

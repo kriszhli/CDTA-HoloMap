@@ -23,6 +23,8 @@ Open the local URL printed by the dev server. Build with `npm run build`. Check 
 
 The feed is polled every 15 seconds after each request completes. GPS reports more than 120 seconds old, malformed coordinates, and reports missing timestamps are hidden. Feed failures are shown explicitly; recent buses keep their bounded prediction while retrying. No buses are created from schedules alone. A route may have no recent GPS reports even when service is scheduled. The upstream CDTA feed uses HTTP, so its server-side connection is unencrypted.
 
+Selected routes have 50%-opacity highlights for their GTFS path variants, with 50%-opacity animated direction arrows on the most frequent trip pattern in each direction. Arrows indicate route direction, not a particular bus or its speed; buses remain above both overlays.
+
 ## Continuous movement
 
 Each actual bus is projected onto its GTFS trip geometry. A frame animation advances it along that path, including corners. The first observation uses the trip shape's scheduled average speed (or reported speed, when provided); subsequent GPS timestamps and along-route distances determine its speed. Each update preserves the currently displayed position and reconciles its error through an exponential correction to prediction speed, typically over 8 seconds. This is an estimate, not continuous GPS.
