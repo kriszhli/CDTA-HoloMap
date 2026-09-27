@@ -71,7 +71,7 @@ export default function Home() {
         },
         maxPitch: 75, canvasContextAttributes: { antialias: true }, attributionControl: { compact: true } });
       map.current = instance;
-      const removeTrackpadRotation = enableTrackpadRotation(instance);
+      const removeTrackpadRotation = enableTrackpadRotation(instance, () => followBus(null));
       instance.on('remove', removeTrackpadRotation);
       instance.addControl(new GL.NavigationControl({ visualizePitch: true }), 'bottom-right');
       instance.on('load', () => {
@@ -286,7 +286,7 @@ export default function Home() {
     </aside>
     <section className="map-region" aria-label="Live bus map">
       <div ref={mapElement} className="map"/>
-      <div className="gesture-hint">Two-finger swipe sideways to rotate · Scroll / pinch to zoom</div>
+      <div className="gesture-hint">Two-finger swipe to pan · Pinch to zoom · Native twist: Safari</div>
       <div className="holo-overlay" aria-hidden="true"/>
       <div className="map-title"><span>CDTA NETWORK</span><strong>ALBANY<span> / NY</span></strong><small>{flat ? 'PLAN VIEW' : 'HOLOGRAPHIC VIEW'} <i/> REAL-TIME VEHICLES</small></div>
       <div className="camera-readout" aria-hidden="true">{camera.lat.toFixed(4)}° N · {Math.abs(camera.lng).toFixed(4)}° W <span>HDG {((camera.bearing + 360) % 360).toFixed(0).padStart(3, '0')}°</span></div>
