@@ -1,4 +1,4 @@
-# CDTA HoloMap
+# CDTA-HoloMap
 
 A minimal Albany/Capital Region bus map: select CDTA routes and view their predicted positions between live GPS reports. Independent implementation inspired by the map-first idea of [taiwan-rail-live](https://github.com/siriushsu/taiwan-rail-live); no code or assets copied from that project.
 

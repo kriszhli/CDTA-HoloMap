@@ -224,7 +224,7 @@ export default function Home() {
   const count = (id: string) => displayVehicles.filter(v => v.routeId === id).length;
   return <main>
     <aside className={`panel ${open ? 'expanded' : ''}`}>
-      <header className="brand"><span className="brand-icon"><BusFront size={24}/></span><div><h1>CDTA <span>Live</span></h1><p>CAPITAL REGION / LIVE TRANSIT</p></div></header>
+      <header className="brand"><span className="brand-icon"><BusFront size={24}/></span><div><h1>CDTA-<span>HoloMap</span></h1><p>CAPITAL REGION / LIVE TRANSIT</p></div></header>
       <div className="panel-heading"><div><h2>Bus lines <span className="selected-total">{selected.length}</span></h2><p>Select the lines you want to follow.</p></div><button className="route-toggle" onClick={() => setOpen(!open)} aria-label={open ? 'Close route picker' : 'Open route picker'} aria-expanded={open} aria-controls="route-options">{open ? <X/> : <ChevronDown/>}</button></div>
       {!open && <div className="selected-lines" aria-label="Selected bus lines">{selected.map(id => { const route = routeById.get(id); return <button key={id} style={{background: route?.color}} onClick={() => toggle(id)} aria-label={`Remove route ${route?.number ?? id}`} title={route?.name}>{route?.number ?? id}</button>; })}{!selected.length && <button className="choose-lines" onClick={() => setOpen(true)}>Choose bus lines</button>}</div>}
       <div className="selection-summary"><span>{selected.length} selected</span><button onClick={() => setSelected([])} disabled={!selected.length}>Clear</button></div>
