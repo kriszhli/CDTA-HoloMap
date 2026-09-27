@@ -4,13 +4,20 @@ import { flushSync } from 'react-dom';
 import { BusFront, LocateFixed, ChevronDown, Radio, X } from 'lucide-react';
 import type * as Leaflet from 'leaflet';
 import { Checkbox } from '@/components/ui/checkbox';
-import routes from '@/data/routes.json';
+import routeData from '@/data/routes.json';
 import { freshVehicles, MAX_AGE } from '@/lib/vehicles.mjs';
-import { updateMotion, positionAt, pointAt } from '@/lib/motion.mjs';
+import { updateMotion, positionAt, pointAt, distanceAt } from '@/lib/motion.mjs';
 
 type Vehicle = { id: string; routeId: string; lat: number; lng: number; tripId: string | null; shapeId: string | null; speed: number | null; stopped: boolean; timestamp: number };
 type Path = { routeIds: string[]; arrowRouteIds: string[]; points: [number, number, number][]; speed: number };
 type Feed = { timestamp: number; vehicles: Vehicle[] };
+// Display colors distinguish lines; BusPlus keeps its named line colors.
+const palette = ['#087fb9', '#b27608', '#078962', '#8748b5', '#cf345c', '#14828b', '#af651a', '#4b68bd'];
+const busPlus: Record<string, string> = { '905': '#e51b42', '910': '#8748b5', '922': '#176eae', '923': '#008ca5' };
+const routes = routeData.map((route, index) => ({ ...route, color: busPlus[route.id] ?? palette[index % palette.length] }));
+function heading(from: number[], to: number[]) {
+  return Math.atan2(-(to[0] - from[0]), (to[1] - from[1]) * Math.cos(from[0] * Math.PI / 180)) * 180 / Math.PI;
+}
 const initialRoutes = ['1', '10', '12', '905'];
 const routeById = new Map(routes.map(r => [r.id, r]));
 
@@ -133,7 +140,17 @@ export default function Home() {
       const time = Date.now() / 1000;
       markers.current.forEach((marker, id) => {
         const model = motion.current.get(id);
-        if (model && time - model.report.timestamp <= MAX_AGE) marker.setLatLng(positionAt(model, time) as [number, number]);
+        if (model && time - model.report.timestamp <= MAX_AGE) {
+          marker.setLatLng(positionAt(model, time) as [number, number]);
+          const pointer = marker.getElement()?.querySelector<HTMLElement>('.bus-heading');
+          if (pointer) {
+            pointer.hidden = !model.path;
+            if (model.path) {
+              const s = distanceAt(model, time);
+              pointer.style.transform = `rotate(${heading(pointAt(model.path, s - 15), pointAt(model.path, s + 15))}deg)`;
+            }
+          }
+        }
       });
       const phase = performance.now() / 1000;
       routeArrows.current.forEach(({ marker, glyph, path, offset, length, speed }) => {
@@ -141,7 +158,7 @@ export default function Home() {
         const position = pointAt(path, distance);
         const behind = pointAt(path, Math.max(0, distance - 15));
         const ahead = pointAt(path, Math.min(length, distance + 15));
-        const angle = Math.atan2(-(ahead[0] - behind[0]), (ahead[1] - behind[1]) * Math.cos(position[0] * Math.PI / 180)) * 180 / Math.PI;
+        const angle = heading(behind, ahead);
         marker.setLatLng(position as [number, number]);
         glyph.style.transform = `rotate(${angle}deg)`;
       });
@@ -180,17 +197,19 @@ export default function Home() {
       const route = routeById.get(v.routeId);
       const label = route?.number ?? v.routeId;
       const badge = document.createElement('div');
-      badge.className = 'bus-marker'; badge.style.background = route?.color ?? '#123573';
-      badge.textContent = label;
+      badge.className = 'bus-marker'; badge.style.setProperty('--bus-color', route?.color ?? '#123573');
+      const pointer = document.createElement('span'); pointer.className = 'bus-heading'; pointer.hidden = true;
+      const number = document.createElement('span'); number.textContent = label;
+      badge.appendChild(pointer); badge.appendChild(number);
       let marker = markers.current.get(v.id);
       if (!marker) {
         const model = motion.current.get(v.id);
         const position = model ? positionAt(model, Date.now() / 1000) : [v.lat, v.lng];
-        marker = L.marker(position as [number, number], { icon: L.divIcon({ html: badge, className: '', iconSize: [44, 32], iconAnchor: [22, 16] }), title: `Route ${label}, bus ${v.id}` }).addTo(instance);
+        marker = L.marker(position as [number, number], { icon: L.divIcon({ html: badge, className: '', iconSize: [40, 26], iconAnchor: [20, 13] }), title: `Route ${label}, bus ${v.id}` }).addTo(instance);
         markers.current.set(v.id, marker);
       } else {
         if (marker.getElement()?.textContent !== label) {
-          marker.setIcon(L.divIcon({ html: badge, className: '', iconSize: [44, 32], iconAnchor: [22, 16] }));
+          marker.setIcon(L.divIcon({ html: badge, className: '', iconSize: [40, 26], iconAnchor: [20, 13] }));
           const element = marker.getElement();
           if (element) element.title = `Route ${label}, bus ${v.id}`;
         }
@@ -230,14 +249,15 @@ export default function Home() {
     if (L && map.current && displayVehicles.length) map.current.fitBounds(L.latLngBounds(displayVehicles.map(v => markers.current.get(v.id)?.getLatLng() ?? L.latLng(v.lat, v.lng))), { padding: [60, 60], maxZoom: 14 });
     else map.current?.setView([42.683, -73.79], 12);
   }
-  const status = error ? 'Connection interrupted' : stale ? 'Feed is out of date' : feed ? 'Live bus movement' : 'Connecting to CDTA';
+  const status = error ? 'Connection interrupted' : stale ? 'Feed is out of date' : feed ? 'Live movement' : 'Connecting to CDTA';
   const count = (id: string) => displayVehicles.filter(v => v.routeId === id).length;
   return <main>
     <aside className={`panel ${open ? 'expanded' : ''}`}>
       <header className="brand"><span className="brand-icon"><BusFront size={24}/></span><div><h1>CDTA <span>Live</span></h1><p>ALBANY & THE CAPITAL REGION</p></div></header>
-      <div className="panel-heading"><div><h2>Your bus lines</h2><p>Select lines to see their buses.</p></div><button className="mobile-toggle" onClick={() => setOpen(!open)} aria-label={open ? 'Close route picker' : 'Open route picker'} aria-expanded={open}>{open ? <X/> : <ChevronDown/>}</button></div>
+      <div className="panel-heading"><div><h2>Bus lines <span className="selected-total">{selected.length}</span></h2><p>Select the lines you want to follow.</p></div><button className="route-toggle" onClick={() => setOpen(!open)} aria-label={open ? 'Close route picker' : 'Open route picker'} aria-expanded={open} aria-controls="route-options">{open ? <X/> : <ChevronDown/>}</button></div>
+      {!open && <div className="selected-lines" aria-label="Selected bus lines">{selected.map(id => { const route = routeById.get(id); return <button key={id} style={{background: route?.color}} onClick={() => toggle(id)} aria-label={`Remove route ${route?.number ?? id}`} title={route?.name}>{route?.number ?? id}</button>; })}{!selected.length && <button className="choose-lines" onClick={() => setOpen(true)}>Choose bus lines</button>}</div>}
       <div className="selection-summary"><span>{selected.length} selected</span><button onClick={() => setSelected([])} disabled={!selected.length}>Clear</button></div>
-      <div className="route-list" aria-label="CDTA bus lines">
+      <div id="route-options" className="route-list" aria-label="CDTA bus lines">
         {routes.map(route => <label className={`route ${selected.includes(route.id) ? 'selected' : ''}`} key={route.id}>
           <Checkbox checked={selected.includes(route.id)} onCheckedChange={() => toggle(route.id)} aria-label={`${route.number} ${route.name}`}/>
           <span className="route-number" style={{background: route.color}}>{route.number}</span>
