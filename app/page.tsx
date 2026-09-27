@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { BusFront, LocateFixed, ChevronDown, Radio, X } from 'lucide-react';
-import type * as Leaflet from 'leaflet';
+import type { Map as GLMap, Marker, GeoJSONSource } from 'maplibre-gl';
+import type { HoloVehicle } from '@/lib/hologram-map';
 import { Checkbox } from '@/components/ui/checkbox';
 import routeData from '@/data/routes.json';
 import { freshVehicles, MAX_AGE } from '@/lib/vehicles.mjs';
@@ -13,8 +14,8 @@ type Path = { routeIds: string[]; points: [number, number, number][]; speed: num
 type Stop = { id: string; name: string; lat: number; lng: number; routeIds: string[] };
 type Feed = { timestamp: number; vehicles: Vehicle[] };
 // Display colors distinguish lines; BusPlus keeps its named line colors.
-const palette = ['#087fb9', '#b27608', '#078962', '#8748b5', '#cf345c', '#14828b', '#af651a', '#4b68bd'];
-const busPlus: Record<string, string> = { '905': '#e51b42', '910': '#8748b5', '922': '#176eae', '923': '#008ca5' };
+const palette = ['#ff943f', '#67e7ef', '#a5d798', '#caadff', '#ffa5bd', '#72bdf5', '#ffd085', '#a2c9f9'];
+const busPlus: Record<string, string> = { '905': '#ff655c', '910': '#caadff', '922': '#72bdf5', '923': '#67e7ef' };
 const routes = routeData.map((route, index) => ({ ...route, color: busPlus[route.id] ?? palette[index % palette.length] }));
 const initialRoutes = ['1', '10', '12', '905'];
 const routeById = new Map(routes.map(r => [r.id, r]));
@@ -32,35 +33,47 @@ export default function Home() {
   const [stops, setStops] = useState<Stop[]>([]);
   const motion = useRef(new Map<string, ReturnType<typeof updateMotion>>());
   const mapElement = useRef<HTMLDivElement>(null);
-  const map = useRef<Leaflet.Map | null>(null);
-  const library = useRef<typeof Leaflet | null>(null);
-  const markers = useRef(new Map<string, Leaflet.Marker>());
+  const map = useRef<GLMap | null>(null);
+  const library = useRef<typeof import('maplibre-gl') | null>(null);
+  const markers = useRef(new Map<string, Marker>());
+  const holograms = useRef<HoloVehicle[]>([]);
+  const [flat, setFlat] = useState(false);
+  const [camera, setCamera] = useState({ lat: 42.66, lng: -73.76, bearing: -25 });
   const visible: Vehicle[] = freshVehicles(feed?.vehicles ?? [], now).filter((v: Vehicle) => selected.includes(v.routeId));
   const stale = !!feed && (now - feed.timestamp > MAX_AGE || feed.timestamp > now + 30);
   const displayVehicles = stale ? [] : visible;
 
   useEffect(() => {
     let disposed = false;
-    import('leaflet').then(L => {
+    Promise.all([import('maplibre-gl'), import('@/lib/hologram-map')]).then(([GL, holo]) => {
       if (disposed || !mapElement.current) return;
-      library.current = L;
-      const instance = L.map(mapElement.current, { zoomControl: false }).setView([42.683, -73.79], 12);
+      library.current = GL;
+      GL.setWorkerUrl(holo.workerUrl);
+      const instance = new GL.Map({ container: mapElement.current, style: holo.mapStyle,
+        center: [-73.765, 42.657], zoom: 15.2, pitch: 60, bearing: -25,
+        maxPitch: 75, canvasContextAttributes: { antialias: true }, attributionControl: { compact: true } });
       map.current = instance;
-      for (const [name, zIndex] of [['routePaths', '410'], ['routeStops', '420']]) {
-        const pane = instance.createPane(name);
-        pane.style.zIndex = zIndex;
-        pane.style.opacity = name === 'routePaths' ? '0.5' : '1';
-        pane.style.pointerEvents = 'none';
-      }
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      }).addTo(instance).on('tileerror', () => setMapError('Map tiles could not load. Check your connection.'));
-      L.control.zoom({ position: 'bottomright' }).addTo(instance);
-      const observer = new ResizeObserver(() => instance.invalidateSize());
+      instance.addControl(new GL.NavigationControl({ visualizePitch: true }), 'bottom-right');
+      instance.on('load', () => {
+        if (disposed) return;
+        instance.addSource('selected-paths', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+        instance.addLayer({ id: 'route-glow', type: 'line', source: 'selected-paths', paint: { 'line-color': ['get', 'color'], 'line-width': 12, 'line-opacity': .18, 'line-blur': 5 } });
+        instance.addLayer({ id: 'route-lines', type: 'line', source: 'selected-paths', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': 3, 'line-opacity': .55 } });
+        instance.addSource('selected-stops', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+        instance.addLayer({ id: 'stop-circles', type: 'circle', source: 'selected-stops', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 16, 4], 'circle-color': '#0b191f', 'circle-stroke-color': ['get', 'color'], 'circle-stroke-width': 1.5, 'circle-pitch-alignment': 'map' } });
+        instance.addLayer(holo.createBusLayer(() => holograms.current));
+        setReady(true);
+      });
+      instance.on('error', () => setMapError('Some map details could not load. Check your connection and reload.'));
+      instance.on('move', () => {
+        const center = instance.getCenter();
+        setCamera({ lat: center.lat, lng: center.lng, bearing: instance.getBearing() });
+        setFlat(instance.getPitch() < 10);
+      });
+      const observer = new ResizeObserver(() => instance.resize());
       observer.observe(mapElement.current);
-      instance.on('unload', () => observer.disconnect());
-      setReady(true);
-    }).catch(() => setMapError('The map could not load. Please reload this page.'));
+      instance.on('remove', () => observer.disconnect());
+    }).catch(() => setMapError('The 3D map needs WebGL. Enable graphics acceleration in your browser and reload.'));
     return () => { disposed = true; map.current?.remove(); map.current = null; markers.current.clear(); };
   }, []);
 
@@ -80,38 +93,17 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const L = library.current, instance = map.current;
-    if (!L || !instance || !ready) return;
-    const lines = L.layerGroup().addTo(instance);
-    const stopLayer = L.layerGroup().addTo(instance);
+    const instance = map.current;
+    if (!instance || !ready) return;
     const selectedPaths = Object.values(paths).filter(path => path.routeIds.some(id => selected.includes(id)));
-    for (const path of selectedPaths) {
-      const route = routeById.get(path.routeIds.find(id => selected.includes(id))!);
-      L.polyline(path.points.map(([lat, lng]) => [lat, lng]), {
-        pane: 'routePaths', color: route?.color ?? '#123573', weight: 6,
-        opacity: 1, interactive: false, className: 'selected-route-path',
-      }).addTo(lines);
-    }
-    const circles: Leaflet.CircleMarker[] = [];
-    for (const stop of stops) {
-      const routeId = stop.routeIds.find(id => selected.includes(id));
-      if (!routeId) continue;
-      circles.push(L.circleMarker([stop.lat, stop.lng], {
-        pane: 'routeStops', radius: 3, color: routeById.get(routeId)?.color ?? '#123573',
-        weight: 1.8, opacity: 1, fillColor: '#fff', fillOpacity: 1,
-        interactive: false, className: 'bus-stop-circle',
-      }).addTo(stopLayer));
-    }
-    function resizeStops() {
-      const radius = Math.max(2, Math.min(4.5, (instance!.getZoom() - 9) * .75));
-      circles.forEach(circle => circle.setRadius(radius));
-    }
-    resizeStops();
-    instance.on('zoomend', resizeStops);
-    return () => {
-      instance.off('zoomend', resizeStops);
-      lines.remove(); stopLayer.remove();
-    };
+    (instance.getSource('selected-paths') as GeoJSONSource).setData({ type: 'FeatureCollection', features: selectedPaths.map(path => ({
+      type: 'Feature', properties: { color: routeById.get(path.routeIds.find(id => selected.includes(id))!)?.color ?? '#ff943f' },
+      geometry: { type: 'LineString', coordinates: path.points.map(([lat, lng]) => [lng, lat]) },
+    })) });
+    (instance.getSource('selected-stops') as GeoJSONSource).setData({ type: 'FeatureCollection', features: stops.filter(stop => stop.routeIds.some(id => selected.includes(id))).map(stop => ({
+      type: 'Feature', properties: { color: routeById.get(stop.routeIds.find(id => selected.includes(id))!)?.color ?? '#ff943f' },
+      geometry: { type: 'Point', coordinates: [stop.lng, stop.lat] },
+    })) });
   }, [selected, paths, stops, ready]);
 
   useEffect(() => {
@@ -134,7 +126,8 @@ export default function Home() {
       markers.current.forEach((marker, id) => {
         const model = motion.current.get(id);
         if (model && time - model.report.timestamp <= MAX_AGE) {
-          marker.setLatLng(positionAt(model, time) as [number, number]);
+          const [lat, lng] = positionAt(model, time);
+          marker.setLngLat([lng, lat]);
         }
       });
       frame = requestAnimationFrame(animate);
@@ -164,36 +157,36 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const L = library.current, instance = map.current;
-    if (!L || !instance) return;
+    const GL = library.current, instance = map.current;
+    if (!GL || !instance || !ready) return;
+    holograms.current = displayVehicles.flatMap(v => {
+      const model = motion.current.get(v.id);
+      return model ? [{ id: v.id, color: routeById.get(v.routeId)?.color ?? '#ff943f', model }] : [];
+    });
+    instance.triggerRepaint();
     const ids = new Set(displayVehicles.map(v => v.id));
     markers.current.forEach((marker, id) => { if (!ids.has(id)) { marker.remove(); markers.current.delete(id); } });
     displayVehicles.forEach(v => {
-      const route = routeById.get(v.routeId);
-      const label = route?.number ?? v.routeId;
-      const badge = document.createElement('div');
-      badge.className = 'bus-marker'; badge.style.setProperty('--bus-color', route?.color ?? '#123573');
-      const number = document.createElement('span'); number.textContent = label;
-      badge.appendChild(number);
+      const route = routeById.get(v.routeId), label = route?.number ?? v.routeId;
       let marker = markers.current.get(v.id);
       if (!marker) {
+        const badge = document.createElement('button');
+        badge.className = 'bus-marker';
         const model = motion.current.get(v.id);
-        const position = model ? positionAt(model, Date.now() / 1000) : [v.lat, v.lng];
-        marker = L.marker(position as [number, number], { icon: L.divIcon({ html: badge, className: '', iconSize: [40, 26], iconAnchor: [20, 13] }), title: `Route ${label}, bus ${v.id}` }).addTo(instance);
+        const [lat, lng] = model ? positionAt(model, Date.now() / 1000) : [v.lat, v.lng];
+        marker = new GL.Marker({ element: badge, anchor: 'bottom', offset: [0, -36] }).setLngLat([lng, lat]).addTo(instance);
         markers.current.set(v.id, marker);
-      } else {
-        if (marker.getElement()?.textContent !== label) {
-          marker.setIcon(L.divIcon({ html: badge, className: '', iconSize: [40, 26], iconAnchor: [20, 13] }));
-          const element = marker.getElement();
-          if (element) element.title = `Route ${label}, bus ${v.id}`;
-        }
       }
+      const badge = marker.getElement(); badge.textContent = label;
+      badge.style.setProperty('--bus-color', route?.color ?? '#ff943f');
+      badge.setAttribute('aria-label', `Route ${label}, bus ${v.id}`);
       const popup = document.createElement('div');
       const title = document.createElement('strong'); title.textContent = `${label} · ${route?.name ?? 'CDTA'}`;
       const detail = document.createElement('p');
       detail.textContent = `Bus ${v.id} · ${motion.current.get(v.id)?.path ? 'Predicted position' : 'GPS position'} · GPS ${Math.max(0, Math.floor(now - v.timestamp))}s ago`;
       popup.appendChild(title); popup.appendChild(detail);
-      if (marker.getPopup()) marker.setPopupContent(popup); else marker.bindPopup(popup);
+      if (marker.getPopup()) marker.getPopup()!.setDOMContent(popup);
+      else marker.setPopup(new GL.Popup({ offset: 30, closeButton: true }).setDOMContent(popup));
     });
   }, [feed, selected, now, ready, error, stale, paths]);
 
@@ -219,15 +212,19 @@ export default function Home() {
 
   function toggle(id: string) { setSelected(current => current.includes(id) ? current.filter(r => r !== id) : [...current, id]); }
   function fitBuses() {
-    const L = library.current;
-    if (L && map.current && displayVehicles.length) map.current.fitBounds(L.latLngBounds(displayVehicles.map(v => markers.current.get(v.id)?.getLatLng() ?? L.latLng(v.lat, v.lng))), { padding: [60, 60], maxZoom: 14 });
-    else map.current?.setView([42.683, -73.79], 12);
+    const GL = library.current, instance = map.current;
+    if (!GL || !instance) return;
+    if (displayVehicles.length) {
+      const bounds = new GL.LngLatBounds();
+      displayVehicles.forEach(v => bounds.extend(markers.current.get(v.id)?.getLngLat() ?? [v.lng, v.lat]));
+      instance.fitBounds(bounds, { padding: window.innerWidth < 640 ? { top: 230, bottom: 100, left: 50, right: 50 } : { top: 100, bottom: 100, left: 350, right: 100 }, maxZoom: 16, pitch: flat ? 0 : 60, duration: 1000 });
+    } else instance.flyTo({ center: [-73.765, 42.657], zoom: 15.2, pitch: 60, bearing: -25 });
   }
-  const status = error ? 'Connection interrupted' : stale ? 'Feed is out of date' : feed ? 'Live movement' : 'Connecting to CDTA';
+  const status = error ? 'Connection interrupted' : stale ? 'Feed is out of date' : feed ? 'Live telemetry' : 'Connecting to CDTA';
   const count = (id: string) => displayVehicles.filter(v => v.routeId === id).length;
   return <main>
     <aside className={`panel ${open ? 'expanded' : ''}`}>
-      <header className="brand"><span className="brand-icon"><BusFront size={24}/></span><div><h1>CDTA <span>Live</span></h1><p>ALBANY & THE CAPITAL REGION</p></div></header>
+      <header className="brand"><span className="brand-icon"><BusFront size={24}/></span><div><h1>CDTA <span>Live</span></h1><p>CAPITAL REGION / LIVE TRANSIT</p></div></header>
       <div className="panel-heading"><div><h2>Bus lines <span className="selected-total">{selected.length}</span></h2><p>Select the lines you want to follow.</p></div><button className="route-toggle" onClick={() => setOpen(!open)} aria-label={open ? 'Close route picker' : 'Open route picker'} aria-expanded={open} aria-controls="route-options">{open ? <X/> : <ChevronDown/>}</button></div>
       {!open && <div className="selected-lines" aria-label="Selected bus lines">{selected.map(id => { const route = routeById.get(id); return <button key={id} style={{background: route?.color}} onClick={() => toggle(id)} aria-label={`Remove route ${route?.number ?? id}`} title={route?.name}>{route?.number ?? id}</button>; })}{!selected.length && <button className="choose-lines" onClick={() => setOpen(true)}>Choose bus lines</button>}</div>}
       <div className="selection-summary"><span>{selected.length} selected</span><button onClick={() => setSelected([])} disabled={!selected.length}>Clear</button></div>
@@ -243,11 +240,15 @@ export default function Home() {
     </aside>
     <section className="map-region" aria-label="Live bus map">
       <div ref={mapElement} className="map"/>
+      <div className="holo-overlay" aria-hidden="true"/>
+      <div className="map-title"><span>CDTA NETWORK</span><strong>ALBANY<span> / NY</span></strong><small>{flat ? 'PLAN VIEW' : 'HOLOGRAPHIC VIEW'} <i/> REAL-TIME VEHICLES</small></div>
+      <div className="camera-readout" aria-hidden="true">{camera.lat.toFixed(4)}° N · {Math.abs(camera.lng).toFixed(4)}° W <span>HDG {((camera.bearing + 360) % 360).toFixed(0).padStart(3, '0')}°</span></div>
+      <button className="view-button" onClick={() => map.current?.easeTo({ pitch: flat ? 60 : 0, bearing: flat ? -25 : 0, duration: 800 })} aria-label={flat ? 'Switch to 3D view' : 'Switch to top-down view'}>{flat ? '3D' : '2D'}<span>{flat ? 'TILT MAP' : 'TOP DOWN'}</span></button>
       <div className="map-status" role="status"><span className={`signal ${feed && !error && !stale ? 'connected' : ''}`}><Radio size={18}/></span><div><strong>{status}</strong><span>{feed && !error && !stale ? `${displayVehicles.length} buses on selected lines · updated ${Math.max(0, Math.floor(now - feed.timestamp))}s ago` : 'Updates automatically every 15 seconds'}</span></div></div>
       <button className="fit-button" onClick={fitBuses} aria-label="Fit selected buses on map" title="Fit selected buses"><LocateFixed size={21}/></button>
       {(error || stale || !selected.length || (feed && !displayVehicles.length)) && <div className="map-message" role="status">{error || (stale ? 'CDTA’s latest report is more than 2 minutes old. Waiting for fresh locations.' : !selected.length ? 'Select a bus line to start tracking.' : 'No recent bus locations for these lines. Service may not be running.')}</div>}
       {mapError && <div className="tile-error" role="alert">{mapError}</div>}
-      <div className="map-note">{Object.keys(paths).length ? 'Predicted between GPS updates · Slows to rest if updates stop' : pathError ? 'GPS positions only · Route geometry unavailable' : 'GPS positions · Loading route geometry…'}</div>
+      <div className="map-note"><span className="legend-ring"/> Stops <span className="note-divider">/</span> {Object.keys(paths).length ? 'Predicted between GPS updates · Slows to rest if updates stop' : pathError ? 'GPS positions only · Route geometry unavailable' : 'GPS positions · Loading route geometry…'}</div>
     </section>
   </main>;
 }
