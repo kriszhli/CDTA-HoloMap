@@ -6,18 +6,16 @@ import type * as Leaflet from 'leaflet';
 import { Checkbox } from '@/components/ui/checkbox';
 import routeData from '@/data/routes.json';
 import { freshVehicles, MAX_AGE } from '@/lib/vehicles.mjs';
-import { updateMotion, positionAt, pointAt, distanceAt } from '@/lib/motion.mjs';
+import { updateMotion, positionAt } from '@/lib/motion.mjs';
 
 type Vehicle = { id: string; routeId: string; lat: number; lng: number; tripId: string | null; shapeId: string | null; speed: number | null; stopped: boolean; timestamp: number };
-type Path = { routeIds: string[]; arrowRouteIds: string[]; points: [number, number, number][]; speed: number };
+type Path = { routeIds: string[]; points: [number, number, number][]; speed: number };
+type Stop = { id: string; name: string; lat: number; lng: number; routeIds: string[] };
 type Feed = { timestamp: number; vehicles: Vehicle[] };
 // Display colors distinguish lines; BusPlus keeps its named line colors.
 const palette = ['#087fb9', '#b27608', '#078962', '#8748b5', '#cf345c', '#14828b', '#af651a', '#4b68bd'];
 const busPlus: Record<string, string> = { '905': '#e51b42', '910': '#8748b5', '922': '#176eae', '923': '#008ca5' };
 const routes = routeData.map((route, index) => ({ ...route, color: busPlus[route.id] ?? palette[index % palette.length] }));
-function heading(from: number[], to: number[]) {
-  return Math.atan2(-(to[0] - from[0]), (to[1] - from[1]) * Math.cos(from[0] * Math.PI / 180)) * 180 / Math.PI;
-}
 const initialRoutes = ['1', '10', '12', '905'];
 const routeById = new Map(routes.map(r => [r.id, r]));
 
@@ -31,11 +29,11 @@ export default function Home() {
   const [ready, setReady] = useState(false);
   const [pathError, setPathError] = useState(false);
   const [paths, setPaths] = useState<Record<string, Path>>({});
+  const [stops, setStops] = useState<Stop[]>([]);
   const motion = useRef(new Map<string, ReturnType<typeof updateMotion>>());
   const mapElement = useRef<HTMLDivElement>(null);
   const map = useRef<Leaflet.Map | null>(null);
   const library = useRef<typeof Leaflet | null>(null);
-  const routeArrows = useRef<{ marker: Leaflet.Marker; glyph: HTMLElement; path: Path; offset: number; length: number; speed: number }[]>([]);
   const markers = useRef(new Map<string, Leaflet.Marker>());
   const visible: Vehicle[] = freshVehicles(feed?.vehicles ?? [], now).filter((v: Vehicle) => selected.includes(v.routeId));
   const stale = !!feed && (now - feed.timestamp > MAX_AGE || feed.timestamp > now + 30);
@@ -48,10 +46,10 @@ export default function Home() {
       library.current = L;
       const instance = L.map(mapElement.current, { zoomControl: false }).setView([42.683, -73.79], 12);
       map.current = instance;
-      for (const [name, zIndex] of [['routePaths', '410'], ['routeArrows', '420']]) {
+      for (const [name, zIndex] of [['routePaths', '410'], ['routeStops', '420']]) {
         const pane = instance.createPane(name);
         pane.style.zIndex = zIndex;
-        pane.style.opacity = '0.5';
+        pane.style.opacity = name === 'routePaths' ? '0.5' : '1';
         pane.style.pointerEvents = 'none';
       }
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -72,6 +70,12 @@ export default function Home() {
       if (!response.ok) throw new Error('Route geometry unavailable');
       return response.json();
     }).then(data => setPaths(data as Record<string, Path>)).catch(() => { if (!controller.signal.aborted) setPathError(true); });
+    fetch('/stops.json', { signal: controller.signal }).then(response => {
+      if (!response.ok) throw new Error('Bus stops unavailable');
+      return response.json();
+    }).then(data => setStops(data as Stop[])).catch(() => {
+      if (!controller.signal.aborted) setMapError('Bus stops could not load. Please reload the map.');
+    });
     return () => controller.abort();
   }, []);
 
@@ -79,7 +83,7 @@ export default function Home() {
     const L = library.current, instance = map.current;
     if (!L || !instance || !ready) return;
     const lines = L.layerGroup().addTo(instance);
-    const arrows = L.layerGroup().addTo(instance);
+    const stopLayer = L.layerGroup().addTo(instance);
     const selectedPaths = Object.values(paths).filter(path => path.routeIds.some(id => selected.includes(id)));
     for (const path of selectedPaths) {
       const route = routeById.get(path.routeIds.find(id => selected.includes(id))!);
@@ -88,38 +92,27 @@ export default function Home() {
         opacity: 1, interactive: false, className: 'selected-route-path',
       }).addTo(lines);
     }
-    function rebuildArrows() {
-      if (!L || !instance) return;
-      arrows.clearLayers();
-      routeArrows.current = [];
-      const center = instance.getSize().divideBy(2);
-      const metresPerPixel = instance.distance(instance.containerPointToLatLng(center), instance.containerPointToLatLng(center.add([100, 0]))) / 100;
-      for (const path of selectedPaths) {
-        const routeId = path.arrowRouteIds.find(id => selected.includes(id));
-        if (!routeId) continue;
-        const length = path.points.at(-1)![2];
-        if (!length) continue;
-        const count = Math.min(80, Math.max(1, Math.floor(length / (metresPerPixel * 110))));
-        for (let i = 0; i < count; i++) {
-          const glyph = document.createElement('span');
-          glyph.className = 'route-arrow-glyph';
-          glyph.style.background = routeById.get(routeId)?.color ?? '#123573';
-          const marker = L.marker(pointAt(path, length * i / count) as [number, number], {
-            pane: 'routeArrows', interactive: false, keyboard: false,
-            icon: L.divIcon({ html: glyph, className: 'route-arrow', iconSize: [16, 14], iconAnchor: [8, 7] }),
-          }).addTo(arrows);
-          routeArrows.current.push({ marker, glyph, path, offset: length * i / count, length, speed: metresPerPixel * 22 });
-        }
-      }
+    const circles: Leaflet.CircleMarker[] = [];
+    for (const stop of stops) {
+      const routeId = stop.routeIds.find(id => selected.includes(id));
+      if (!routeId) continue;
+      circles.push(L.circleMarker([stop.lat, stop.lng], {
+        pane: 'routeStops', radius: 3, color: routeById.get(routeId)?.color ?? '#123573',
+        weight: 1.8, opacity: 1, fillColor: '#fff', fillOpacity: 1,
+        interactive: false, className: 'bus-stop-circle',
+      }).addTo(stopLayer));
     }
-    rebuildArrows();
-    instance.on('zoomend', rebuildArrows);
+    function resizeStops() {
+      const radius = Math.max(2, Math.min(4.5, (instance!.getZoom() - 9) * .75));
+      circles.forEach(circle => circle.setRadius(radius));
+    }
+    resizeStops();
+    instance.on('zoomend', resizeStops);
     return () => {
-      instance.off('zoomend', rebuildArrows);
-      routeArrows.current = [];
-      lines.remove(); arrows.remove();
+      instance.off('zoomend', resizeStops);
+      lines.remove(); stopLayer.remove();
     };
-  }, [selected, paths, ready]);
+  }, [selected, paths, stops, ready]);
 
   useEffect(() => {
     const ids = new Set(feed?.vehicles.map(v => v.id));
@@ -142,25 +135,7 @@ export default function Home() {
         const model = motion.current.get(id);
         if (model && time - model.report.timestamp <= MAX_AGE) {
           marker.setLatLng(positionAt(model, time) as [number, number]);
-          const pointer = marker.getElement()?.querySelector<HTMLElement>('.bus-heading');
-          if (pointer) {
-            pointer.hidden = !model.path;
-            if (model.path) {
-              const s = distanceAt(model, time);
-              pointer.style.transform = `rotate(${heading(pointAt(model.path, s - 15), pointAt(model.path, s + 15))}deg)`;
-            }
-          }
         }
-      });
-      const phase = performance.now() / 1000;
-      routeArrows.current.forEach(({ marker, glyph, path, offset, length, speed }) => {
-        const distance = (offset + phase * speed) % length;
-        const position = pointAt(path, distance);
-        const behind = pointAt(path, Math.max(0, distance - 15));
-        const ahead = pointAt(path, Math.min(length, distance + 15));
-        const angle = heading(behind, ahead);
-        marker.setLatLng(position as [number, number]);
-        glyph.style.transform = `rotate(${angle}deg)`;
       });
       frame = requestAnimationFrame(animate);
     }
@@ -198,9 +173,8 @@ export default function Home() {
       const label = route?.number ?? v.routeId;
       const badge = document.createElement('div');
       badge.className = 'bus-marker'; badge.style.setProperty('--bus-color', route?.color ?? '#123573');
-      const pointer = document.createElement('span'); pointer.className = 'bus-heading'; pointer.hidden = true;
       const number = document.createElement('span'); number.textContent = label;
-      badge.appendChild(pointer); badge.appendChild(number);
+      badge.appendChild(number);
       let marker = markers.current.get(v.id);
       if (!marker) {
         const model = motion.current.get(v.id);
