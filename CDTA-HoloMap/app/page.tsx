@@ -37,6 +37,13 @@ export default function Home() {
   const library = useRef<typeof import('maplibre-gl') | null>(null);
   const markers = useRef(new Map<string, Marker>());
   const holograms = useRef<HoloVehicle[]>([]);
+  const [following, setFollowing] = useState<string | null>(null);
+  const followingRef = useRef<string | null>(null);
+  function followBus(id: string | null) {
+    followingRef.current = id;
+    setFollowing(id);
+    if (id) map.current?.stop();
+  }
   const [flat, setFlat] = useState(false);
   const [camera, setCamera] = useState({ lat: 42.66, lng: -73.76, bearing: -25 });
   const visible: Vehicle[] = freshVehicles(feed?.vehicles ?? [], now).filter((v: Vehicle) => selected.includes(v.routeId));
@@ -63,6 +70,17 @@ export default function Home() {
         instance.addLayer({ id: 'stop-circles', type: 'circle', source: 'selected-stops', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 16, 4], 'circle-color': '#0b191f', 'circle-stroke-color': ['get', 'color'], 'circle-stroke-width': 1.5, 'circle-pitch-alignment': 'map' } });
         instance.addLayer(holo.createBusLayer(() => holograms.current));
         setReady(true);
+      });
+      instance.on('dragstart', () => followBus(null));
+      instance.on('click', event => {
+        // The models are enlarged map symbols; allow clicking their ground position too.
+        let nearest: string | null = null, distance = 30;
+        for (const [id, marker] of markers.current) {
+          const point = instance.project(marker.getLngLat());
+          const delta = Math.hypot(point.x - event.point.x, point.y - event.point.y);
+          if (delta < distance) { nearest = id; distance = delta; }
+        }
+        if (nearest) followBus(nearest);
       });
       instance.on('error', () => setMapError('Some map details could not load. Check your connection and reload.'));
       instance.on('move', () => {
@@ -128,6 +146,10 @@ export default function Home() {
         if (model && time - model.report.timestamp <= MAX_AGE) {
           const [lat, lng] = positionAt(model, time);
           marker.setLngLat([lng, lat]);
+          const instance = map.current;
+          if (followingRef.current === id && instance && !instance.isMoving()) {
+            instance.jumpTo({ center: [lng, lat] });
+          }
         }
       });
       frame = requestAnimationFrame(animate);
@@ -165,6 +187,7 @@ export default function Home() {
     });
     instance.triggerRepaint();
     const ids = new Set(displayVehicles.map(v => v.id));
+    if (followingRef.current && !ids.has(followingRef.current)) followBus(null);
     markers.current.forEach((marker, id) => { if (!ids.has(id)) { marker.remove(); markers.current.delete(id); } });
     displayVehicles.forEach(v => {
       const route = routeById.get(v.routeId), label = route?.number ?? v.routeId;
@@ -172,6 +195,7 @@ export default function Home() {
       if (!marker) {
         const badge = document.createElement('button');
         badge.className = 'bus-marker';
+        badge.addEventListener('click', () => followBus(v.id));
         const model = motion.current.get(v.id);
         const [lat, lng] = model ? positionAt(model, Date.now() / 1000) : [v.lat, v.lng];
         marker = new GL.Marker({ element: badge, anchor: 'bottom', offset: [0, -36] }).setLngLat([lng, lat]).addTo(instance);
@@ -179,7 +203,9 @@ export default function Home() {
       }
       const badge = marker.getElement(); badge.textContent = label;
       badge.style.setProperty('--bus-color', route?.color ?? '#ff943f');
-      badge.setAttribute('aria-label', `Route ${label}, bus ${v.id}`);
+      badge.setAttribute('aria-label', `Follow route ${label}, bus ${v.id}`);
+      badge.setAttribute('aria-pressed', String(following === v.id));
+      badge.title = `Click to follow bus ${v.id}`;
       const popup = document.createElement('div');
       const title = document.createElement('strong'); title.textContent = `${label} · ${route?.name ?? 'CDTA'}`;
       const detail = document.createElement('p');
@@ -188,7 +214,7 @@ export default function Home() {
       if (marker.getPopup()) marker.getPopup()!.setDOMContent(popup);
       else marker.setPopup(new GL.Popup({ offset: 30, closeButton: true }).setDOMContent(popup));
     });
-  }, [feed, selected, now, ready, error, stale, paths]);
+  }, [feed, selected, now, ready, error, stale, paths, following]);
 
   useEffect(() => {
     const context = (document as Document & { modelContext?: { registerTool: (tool: object, options: { signal: AbortSignal }) => void | Promise<void> } }).modelContext;
@@ -211,7 +237,14 @@ export default function Home() {
   }, []);
 
   function toggle(id: string) { setSelected(current => current.includes(id) ? current.filter(r => r !== id) : [...current, id]); }
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') followBus(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   function fitBuses() {
+    followBus(null);
     const GL = library.current, instance = map.current;
     if (!GL || !instance) return;
     if (displayVehicles.length) {
@@ -245,6 +278,7 @@ export default function Home() {
       <div className="camera-readout" aria-hidden="true">{camera.lat.toFixed(4)}° N · {Math.abs(camera.lng).toFixed(4)}° W <span>HDG {((camera.bearing + 360) % 360).toFixed(0).padStart(3, '0')}°</span></div>
       <button className="view-button" onClick={() => map.current?.easeTo({ pitch: flat ? 60 : 0, bearing: flat ? -25 : 0, duration: 800 })} aria-label={flat ? 'Switch to 3D view' : 'Switch to top-down view'}>{flat ? '3D' : '2D'}<span>{flat ? 'TILT MAP' : 'TOP DOWN'}</span></button>
       <div className="map-status" role="status"><span className={`signal ${feed && !error && !stale ? 'connected' : ''}`}><Radio size={18}/></span><div><strong>{status}</strong><span>{feed && !error && !stale ? `${displayVehicles.length} buses on selected lines · updated ${Math.max(0, Math.floor(now - feed.timestamp))}s ago` : 'Updates automatically every 15 seconds'}</span></div></div>
+      {following && <div className="follow-status" role="status"><LocateFixed size={16}/><span>Following bus {following}<small>Drag map or press Esc to release</small></span><button onClick={() => followBus(null)} aria-label="Stop following bus"><X size={18}/></button></div>}
       <button className="fit-button" onClick={fitBuses} aria-label="Fit selected buses on map" title="Fit selected buses"><LocateFixed size={21}/></button>
       {(error || stale || !selected.length || (feed && !displayVehicles.length)) && <div className="map-message" role="status">{error || (stale ? 'CDTA’s latest report is more than 2 minutes old. Waiting for fresh locations.' : !selected.length ? 'Select a bus line to start tracking.' : 'No recent bus locations for these lines. Service may not be running.')}</div>}
       {mapError && <div className="tile-error" role="alert">{mapError}</div>}

@@ -32,3 +32,5 @@ Each actual bus is projected onto its GTFS trip geometry. A frame animation adva
 A stopped report sets the target speed to zero. Repeated or older reports never restart the prediction. Trip changes reset motion. Without new GPS, travel gradually slows after 30 seconds and stops extrapolating at 60 seconds; the bus is hidden after 120 seconds. Missing geometry and GPS more than 100 metres off its expected path use GPS-only positions (for example, detours). In crossings, previous progress helps choose the correct route segment. Scheduled average speeds include dwell time; this minimal predictor does not model individual stop dwell times.
 
 Scope intentionally excludes timetable UI, arrivals, route planning, and accounts. The UI includes all bus routes in the current CDTA catalog, with Albany routes selected initially. Development is local only. Commit each completed change to Git.
+
+Click a bus label or model to follow its predicted position. Drag the map, press Escape, choose Fit selected buses, or click Stop following to release the camera. Following ends when that bus is hidden or its location expires.
