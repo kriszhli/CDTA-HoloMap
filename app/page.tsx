@@ -6,8 +6,10 @@ import type * as Leaflet from 'leaflet';
 import { Checkbox } from '@/components/ui/checkbox';
 import routes from '@/data/routes.json';
 import { freshVehicles, MAX_AGE } from '@/lib/vehicles.mjs';
+import { updateMotion, positionAt } from '@/lib/motion.mjs';
 
-type Vehicle = { id: string; routeId: string; lat: number; lng: number; bearing: number | null; timestamp: number };
+type Vehicle = { id: string; routeId: string; lat: number; lng: number; tripId: string | null; shapeId: string | null; speed: number | null; stopped: boolean; timestamp: number };
+type Path = { points: [number, number, number][]; speed: number };
 type Feed = { timestamp: number; vehicles: Vehicle[] };
 const initialRoutes = ['1', '10', '12', '905'];
 const routeById = new Map(routes.map(r => [r.id, r]));
@@ -20,13 +22,16 @@ export default function Home() {
   const [now, setNow] = useState(Date.now() / 1000);
   const [open, setOpen] = useState(false);
   const [ready, setReady] = useState(false);
+  const [pathError, setPathError] = useState(false);
+  const [paths, setPaths] = useState<Record<string, Path>>({});
+  const motion = useRef(new Map<string, ReturnType<typeof updateMotion>>());
   const mapElement = useRef<HTMLDivElement>(null);
   const map = useRef<Leaflet.Map | null>(null);
   const library = useRef<typeof Leaflet | null>(null);
   const markers = useRef(new Map<string, Leaflet.Marker>());
   const visible: Vehicle[] = freshVehicles(feed?.vehicles ?? [], now).filter((v: Vehicle) => selected.includes(v.routeId));
   const stale = !!feed && (now - feed.timestamp > MAX_AGE || feed.timestamp > now + 30);
-  const displayVehicles = error || stale ? [] : visible;
+  const displayVehicles = stale ? [] : visible;
 
   useEffect(() => {
     let disposed = false;
@@ -46,6 +51,42 @@ export default function Home() {
     }).catch(() => setMapError('The map could not load. Please reload this page.'));
     return () => { disposed = true; map.current?.remove(); map.current = null; markers.current.clear(); };
   }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch('/paths.json', { signal: controller.signal }).then(response => {
+      if (!response.ok) throw new Error('Route geometry unavailable');
+      return response.json();
+    }).then(data => setPaths(data as Record<string, Path>)).catch(() => { if (!controller.signal.aborted) setPathError(true); });
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const ids = new Set(feed?.vehicles.map(v => v.id));
+    motion.current.forEach((_, id) => { if (!ids.has(id)) motion.current.delete(id); });
+    for (const vehicle of feed?.vehicles ?? []) {
+      const path = vehicle.shapeId ? paths[vehicle.shapeId] : undefined;
+      const old = motion.current.get(vehicle.id);
+      // Geometry may finish loading after the first GPS response.
+      const previous = old && !old.path && path ? undefined : old;
+      motion.current.set(vehicle.id, updateMotion(previous, vehicle, path, Date.now() / 1000));
+    }
+  }, [feed, paths]);
+
+  useEffect(() => {
+    if (!ready) return;
+    let frame: number;
+    function animate() {
+      const time = Date.now() / 1000;
+      markers.current.forEach((marker, id) => {
+        const model = motion.current.get(id);
+        if (model && time - model.report.timestamp <= MAX_AGE) marker.setLatLng(positionAt(model, time) as [number, number]);
+      });
+      frame = requestAnimationFrame(animate);
+    }
+    frame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frame);
+  }, [ready]);
 
   useEffect(() => {
     let disposed = false;
@@ -80,10 +121,11 @@ export default function Home() {
       badge.textContent = label;
       let marker = markers.current.get(v.id);
       if (!marker) {
-        marker = L.marker([v.lat, v.lng], { icon: L.divIcon({ html: badge, className: '', iconSize: [44, 32], iconAnchor: [22, 16] }), title: `Route ${label}, bus ${v.id}` }).addTo(instance);
+        const model = motion.current.get(v.id);
+        const position = model ? positionAt(model, Date.now() / 1000) : [v.lat, v.lng];
+        marker = L.marker(position as [number, number], { icon: L.divIcon({ html: badge, className: '', iconSize: [44, 32], iconAnchor: [22, 16] }), title: `Route ${label}, bus ${v.id}` }).addTo(instance);
         markers.current.set(v.id, marker);
       } else {
-        marker.setLatLng([v.lat, v.lng]);
         if (marker.getElement()?.textContent !== label) {
           marker.setIcon(L.divIcon({ html: badge, className: '', iconSize: [44, 32], iconAnchor: [22, 16] }));
           const element = marker.getElement();
@@ -93,11 +135,11 @@ export default function Home() {
       const popup = document.createElement('div');
       const title = document.createElement('strong'); title.textContent = `${label} · ${route?.name ?? 'CDTA'}`;
       const detail = document.createElement('p');
-      detail.textContent = `Bus ${v.id} · Reported ${Math.max(0, Math.floor(now - v.timestamp))}s ago`;
+      detail.textContent = `Bus ${v.id} · ${motion.current.get(v.id)?.path ? 'Predicted position' : 'GPS position'} · GPS ${Math.max(0, Math.floor(now - v.timestamp))}s ago`;
       popup.appendChild(title); popup.appendChild(detail);
       if (marker.getPopup()) marker.setPopupContent(popup); else marker.bindPopup(popup);
     });
-  }, [feed, selected, now, ready, error, stale]);
+  }, [feed, selected, now, ready, error, stale, paths]);
 
   useEffect(() => {
     const context = (document as Document & { modelContext?: { registerTool: (tool: object, options: { signal: AbortSignal }) => void | Promise<void> } }).modelContext;
@@ -122,10 +164,10 @@ export default function Home() {
   function toggle(id: string) { setSelected(current => current.includes(id) ? current.filter(r => r !== id) : [...current, id]); }
   function fitBuses() {
     const L = library.current;
-    if (L && map.current && displayVehicles.length) map.current.fitBounds(L.latLngBounds(displayVehicles.map(v => [v.lat, v.lng])), { padding: [60, 60], maxZoom: 14 });
+    if (L && map.current && displayVehicles.length) map.current.fitBounds(L.latLngBounds(displayVehicles.map(v => markers.current.get(v.id)?.getLatLng() ?? L.latLng(v.lat, v.lng))), { padding: [60, 60], maxZoom: 14 });
     else map.current?.setView([42.683, -73.79], 12);
   }
-  const status = error ? 'Connection interrupted' : stale ? 'Feed is out of date' : feed ? 'Live locations' : 'Connecting to CDTA';
+  const status = error ? 'Connection interrupted' : stale ? 'Feed is out of date' : feed ? 'Live bus movement' : 'Connecting to CDTA';
   const count = (id: string) => displayVehicles.filter(v => v.routeId === id).length;
   return <main>
     <aside className={`panel ${open ? 'expanded' : ''}`}>
@@ -148,7 +190,7 @@ export default function Home() {
       <button className="fit-button" onClick={fitBuses} aria-label="Fit selected buses on map" title="Fit selected buses"><LocateFixed size={21}/></button>
       {(error || stale || !selected.length || (feed && !displayVehicles.length)) && <div className="map-message" role="status">{error || (stale ? 'CDTA’s latest report is more than 2 minutes old. Waiting for fresh locations.' : !selected.length ? 'Select a bus line to start tracking.' : 'No recent bus locations for these lines. Service may not be running.')}</div>}
       {mapError && <div className="tile-error" role="alert">{mapError}</div>}
-      <div className="map-note">Reported GPS locations · Reports older than 2 minutes hidden</div>
+      <div className="map-note">{Object.keys(paths).length ? 'Predicted between GPS updates · Slows to rest if updates stop' : pathError ? 'GPS positions only · Route geometry unavailable' : 'GPS positions · Loading route geometry…'}</div>
     </section>
   </main>;
 }
