@@ -1,0 +1,416 @@
+[
+  {
+    "id": "1",
+    "number": "1",
+    "name": "Central Avenue",
+    "color": "#123573"
+  },
+  {
+    "id": "10",
+    "number": "10",
+    "name": "Western Avenue",
+    "color": "#123573"
+  },
+  {
+    "id": "12",
+    "number": "12",
+    "name": "Washington Avenue",
+    "color": "#123573"
+  },
+  {
+    "id": "13",
+    "number": "13",
+    "name": "New Scotland Avenue",
+    "color": "#123573"
+  },
+  {
+    "id": "18",
+    "number": "18",
+    "name": "Delaware Avenue",
+    "color": "#123573"
+  },
+  {
+    "id": "22",
+    "number": "22",
+    "name": "Albany - Troy via Watervliet",
+    "color": "#123573"
+  },
+  {
+    "id": "85",
+    "number": "85",
+    "name": "Fifth Avenue",
+    "color": "#123573"
+  },
+  {
+    "id": "87",
+    "number": "87",
+    "name": "Hoosick St - RPI",
+    "color": "#123573"
+  },
+  {
+    "id": "93",
+    "number": "93",
+    "name": "Star",
+    "color": "#123573"
+  },
+  {
+    "id": "96",
+    "number": "96",
+    "name": "Grafton State Park",
+    "color": "#A52A2A"
+  },
+  {
+    "id": "100",
+    "number": "100",
+    "name": "Mid City Belt",
+    "color": "#008000"
+  },
+  {
+    "id": "106",
+    "number": "106",
+    "name": "Uptown Belt",
+    "color": "#008000"
+  },
+  {
+    "id": "107",
+    "number": "107",
+    "name": "Albany Glenmont",
+    "color": "#008000"
+  },
+  {
+    "id": "114",
+    "number": "114",
+    "name": "Madison Ave - Western Ave",
+    "color": "#008000"
+  },
+  {
+    "id": "117",
+    "number": "117",
+    "name": "Colonie Crosstown",
+    "color": "#008000"
+  },
+  {
+    "id": "125",
+    "number": "125",
+    "name": "Clinton Ave - Sand Creek Rd.",
+    "color": "#008000"
+  },
+  {
+    "id": "155",
+    "number": "155",
+    "name": "Suburban Circulator",
+    "color": "#008000"
+  },
+  {
+    "id": "182",
+    "number": "182",
+    "name": "Troy - Albany via Cohoes and Latham",
+    "color": "#008000"
+  },
+  {
+    "id": "190",
+    "number": "190",
+    "name": "Fuller Rd - Wolf Road",
+    "color": "#008000"
+  },
+  {
+    "id": "214",
+    "number": "214",
+    "name": "Rensselaer 3rd Street",
+    "color": "#008000"
+  },
+  {
+    "id": "224",
+    "number": "224",
+    "name": "Albany - Troy via I-90",
+    "color": "#008000"
+  },
+  {
+    "id": "233",
+    "number": "233",
+    "name": "Albany - Schodack",
+    "color": "#008000"
+  },
+  {
+    "id": "286",
+    "number": "286",
+    "name": "Troy / Wynantskill",
+    "color": "#008000"
+  },
+  {
+    "id": "289",
+    "number": "289",
+    "name": "Griswold Heights - St. Mary's Hospital",
+    "color": "#008000"
+  },
+  {
+    "id": "351",
+    "number": "351",
+    "name": "Van Vranken Ave - Broadway",
+    "color": "#008000"
+  },
+  {
+    "id": "353",
+    "number": "353",
+    "name": "Scotia-Mt.Pleasant",
+    "color": "#008000"
+  },
+  {
+    "id": "355",
+    "number": "355",
+    "name": "Schenectady Wolf Road",
+    "color": "#008000"
+  },
+  {
+    "id": "370",
+    "number": "370",
+    "name": "Troy/Schenectady",
+    "color": "#008000"
+  },
+  {
+    "id": "402",
+    "number": "402",
+    "name": "Bay/College",
+    "color": "#008000"
+  },
+  {
+    "id": "404",
+    "number": "404",
+    "name": "Hudson Falls / Fort Edward",
+    "color": "#008000"
+  },
+  {
+    "id": "407",
+    "number": "407",
+    "name": "West Glens Falls",
+    "color": "#008000"
+  },
+  {
+    "id": "411",
+    "number": "411",
+    "name": "Glen St / Walmart",
+    "color": "#008000"
+  },
+  {
+    "id": "412",
+    "number": "412",
+    "name": "Glen St / Aviation Mall",
+    "color": "#008000"
+  },
+  {
+    "id": "419",
+    "number": "419",
+    "name": "Route 9 / Lake George",
+    "color": "#008000"
+  },
+  {
+    "id": "450",
+    "number": "450",
+    "name": "Schenectady - Wilton via Route 50",
+    "color": "#008000"
+  },
+  {
+    "id": "452",
+    "number": "452",
+    "name": "Skidmore College/Downtown Saratoga",
+    "color": "#008000"
+  },
+  {
+    "id": "519",
+    "number": "519",
+    "name": "Delmar Bypass Express",
+    "color": "#FFFB00"
+  },
+  {
+    "id": "524",
+    "number": "524",
+    "name": "Broadway Menands Express",
+    "color": "#FFFB00"
+  },
+  {
+    "id": "540",
+    "number": "540",
+    "name": "NX - Northway Express",
+    "color": "#FFD700"
+  },
+  {
+    "id": "560",
+    "number": "560",
+    "name": "Thruway Express",
+    "color": "#FFFB00"
+  },
+  {
+    "id": "600",
+    "number": "600",
+    "name": "Neighborhood Belt",
+    "color": "#008000"
+  },
+  {
+    "id": "601",
+    "number": "601",
+    "name": "S. Amsterdam & Route 30",
+    "color": "#008000"
+  },
+  {
+    "id": "605",
+    "number": "605",
+    "name": "Amsterdam to Schenectady via VIA/Port",
+    "color": "#008000"
+  },
+  {
+    "id": "712",
+    "number": "712",
+    "name": "Harriman Campus - Patroon Creek",
+    "color": "#FABE04"
+  },
+  {
+    "id": "713",
+    "number": "713",
+    "name": "Saratoga Springs - Glens Falls",
+    "color": "#FABE04"
+  },
+  {
+    "id": "737",
+    "number": "737",
+    "name": "Corporate Woods - Airport",
+    "color": "#FABE04"
+  },
+  {
+    "id": "763",
+    "number": "763",
+    "name": "Schenectady/Guilderland via Route 20",
+    "color": "#FABE04"
+  },
+  {
+    "id": "801",
+    "number": "801",
+    "name": "Albany Shuttle",
+    "color": "#663300"
+  },
+  {
+    "id": "802",
+    "number": "802",
+    "name": "Troy Shuttle",
+    "color": "#663300"
+  },
+  {
+    "id": "803",
+    "number": "803",
+    "name": "North Albany Shuttle",
+    "color": "#663300"
+  },
+  {
+    "id": "804",
+    "number": "804",
+    "name": "East-West Commuter",
+    "color": "#663300"
+  },
+  {
+    "id": "805",
+    "number": "805",
+    "name": "Mid Town Shuttle",
+    "color": "#663300"
+  },
+  {
+    "id": "806",
+    "number": "806",
+    "name": "Delaware Shuttle",
+    "color": "#663300"
+  },
+  {
+    "id": "807",
+    "number": "807",
+    "name": "Suburban Shuttle",
+    "color": "#663300"
+  },
+  {
+    "id": "808",
+    "number": "808",
+    "name": "Albany - North Greenbush Shuttle",
+    "color": "#663300"
+  },
+  {
+    "id": "810",
+    "number": "810",
+    "name": "Schenectady Shuttle",
+    "color": "#663300"
+  },
+  {
+    "id": "812",
+    "number": "812",
+    "name": "Schenectady - Albany Shuttle",
+    "color": "#663300"
+  },
+  {
+    "id": "813",
+    "number": "813",
+    "name": "Ravena Shopping Bus",
+    "color": "#663300"
+  },
+  {
+    "id": "815",
+    "number": "815",
+    "name": "Troy Shopping Bus",
+    "color": "#663300"
+  },
+  {
+    "id": "821",
+    "number": "821",
+    "name": "North Greenbush Shopping Bus",
+    "color": "#663300"
+  },
+  {
+    "id": "840",
+    "number": "840",
+    "name": "Saratoga Stonequist Shopper Bus",
+    "color": "#663300"
+  },
+  {
+    "id": "872",
+    "number": "872",
+    "name": "Albany County Nature Bus",
+    "color": "#663300"
+  },
+  {
+    "id": "875",
+    "number": "875",
+    "name": "Saratoga Summer Trolley",
+    "color": "#008000"
+  },
+  {
+    "id": "876",
+    "number": "876",
+    "name": "Glens Falls Summer Trolley",
+    "color": "#A52A2A"
+  },
+  {
+    "id": "877",
+    "number": "877",
+    "name": "Glens Falls Summer Trolley North",
+    "color": "#A52A2A"
+  },
+  {
+    "id": "905",
+    "number": "905",
+    "name": "BusPlus Red Line",
+    "color": "#d72c2a"
+  },
+  {
+    "id": "910",
+    "number": "910",
+    "name": "BusPlus Purple Line",
+    "color": "#67309F"
+  },
+  {
+    "id": "922",
+    "number": "922",
+    "name": "BusPlus Blue Line Cohoes to Delaware Station",
+    "color": "#0072ce"
+  },
+  {
+    "id": "923",
+    "number": "923",
+    "name": "BusPlus Blue Line Waterford to Rail Trail Station",
+    "color": "#0072ce"
+  }
+]
