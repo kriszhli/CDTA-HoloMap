@@ -58,6 +58,16 @@ export default function Home() {
       GL.setWorkerUrl(holo.workerUrl);
       const instance = new GL.Map({ container: mapElement.current, style: holo.mapStyle,
         center: [-73.765, 42.657], zoom: 15.2, pitch: 60, bearing: -25,
+        // Constrain every camera update, including wheel/pinch and eased zoom frames.
+        // Do not issue jumpTo during a gesture: it would interrupt the zoom animation.
+        transformCameraUpdate: () => {
+          const id = followingRef.current;
+          const model = id ? motion.current.get(id) : undefined;
+          const time = Date.now() / 1000;
+          if (!model || time - model.report.timestamp > MAX_AGE) return {};
+          const [lat, lng] = positionAt(model, time);
+          return { center: new GL.LngLat(lng, lat) };
+        },
         maxPitch: 75, canvasContextAttributes: { antialias: true }, attributionControl: { compact: true } });
       map.current = instance;
       instance.addControl(new GL.NavigationControl({ visualizePitch: true }), 'bottom-right');
