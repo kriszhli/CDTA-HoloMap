@@ -6,21 +6,24 @@ export function enableTrackpadRotation(map, onPan = () => {}) {
   const view = canvas.ownerDocument.defaultView;
   function down(event) {
     dragged = false;
-    if (!event.shiftKey || event.button !== 0) return;
-    consume(event);
-    map.stop();
-    drag = { x: event.clientX, y: event.clientY, bearing: map.getBearing(), pitch: map.getPitch() };
+    if (event.button !== 0 && event.button !== 2) return;
+    const rotate = event.shiftKey && event.button === 0;
+    if (rotate) { consume(event); map.stop(); }
+    drag = { x: event.clientX, y: event.clientY, bearing: map.getBearing(), pitch: map.getPitch(), rotate };
   }
   function move(event) {
     if (!drag) return;
-    consume(event);
     const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
     if (!dragged && Math.hypot(dx, dy) < 3) return;
+    // Release the follow constraint before MapLibre processes the first drag frame.
+    if (!dragged) onPan();
     dragged = true;
+    if (!drag.rotate) return;
+    consume(event);
     map.jumpTo({ bearing: drag.bearing + dx * .8,
       pitch: Math.max(map.getMinPitch(), Math.min(map.getMaxPitch(), drag.pitch - dy * .5)) });
   }
-  function up(event) { if (drag) consume(event); drag = null; }
+  function up(event) { if (drag?.rotate) consume(event); drag = null; }
   function cancel() { drag = null; dragged = false; }
   function click(event) { if (dragged) { consume(event); dragged = false; } }
   canvas.addEventListener('mousedown', down, true);

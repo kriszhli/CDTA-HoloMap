@@ -51,12 +51,21 @@ pitch = 0; following = true;
 assert.ok(send('mousedown', {shiftKey: true, button: 0, clientX: 100, clientY: 100}));
 send('mousemove', {clientX: 150, clientY: 60}, view);
 assert.equal(bearing, dragStart.bearing + 40); assert.equal(pitch, 20);
-assert.equal(zoom, dragStart.zoom); assert.ok(following);
+assert.equal(zoom, dragStart.zoom); assert.equal(following, false, 'Shift drag releases following');
 send('mousemove', {clientX: 150, clientY: -500}, view); assert.equal(pitch, 75);
 send('mouseup', {}, view); assert.ok(send('click'), 'Rotation drag must not select a bus');
 const finishedBearing = bearing;
 send('mousemove', {clientX: 600, clientY: 600}, view); assert.equal(bearing, finishedBearing);
-assert.equal(send('mousedown', {button: 0, clientX: 100, clientY: 100}), false, 'Normal drag remains native pan');
+for (const button of [0, 2]) {
+  following = true;
+  assert.equal(send('mousedown', {button, clientX: 100, clientY: 100}), false, 'Normal drag remains native');
+  send('mousemove', {clientX: 101, clientY: 101}, view);
+  assert.ok(following, 'A click or tiny jitter must not cancel following');
+  assert.equal(send('mousemove', {clientX: 120, clientY: 110}, view), false);
+  assert.equal(following, false, 'Dragging releases follow before native pan or rotation');
+  send('mouseup', {}, view);
+  assert.ok(send('click'), 'Drag release must not reselect a bus');
+}
 cleanup(); assert.equal(send('wheel', { deltaX: 50 }), false);
 assert.equal(send('gesturestart'), false);
 console.log('Native gesture checks passed: twist, pinch, pan, follow, both pitches, no duplicate zoom, cleanup.');

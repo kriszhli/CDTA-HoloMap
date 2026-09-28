@@ -53,11 +53,11 @@ export function createBusLayer(getVehicles: () => HoloVehicle[], onSelect: (id: 
     fragmentShader: `uniform vec3 color; uniform float time; varying vec2 uvPosition;
       void main() {
         float radius = length(uvPosition - 0.5) * 2.0;
-        float light = 0.07 * exp(-radius * 4.0);
+        float light = 0.025 * exp(-radius * 4.0);
         for (int i = 0; i < 3; i++) {
-          float phase = fract(time / 2.4 + float(i) / 3.0);
-          float wave = (radius - mix(0.16, 0.96, phase)) / 0.025;
-          light += exp(-wave * wave) * (1.0 - phase) * 0.55;
+          float phase = fract(time / 4.8 + float(i) / 3.0);
+          float wave = (radius - mix(0.16, 0.96, phase)) / 0.012;
+          light += exp(-wave * wave) * (1.0 - phase) * 0.25;
         }
         gl_FragColor = vec4(color, light * (1.0 - smoothstep(0.95, 1.0, radius)));
       }`,
@@ -130,7 +130,7 @@ export function createBusLayer(getVehicles: () => HoloVehicle[], onSelect: (id: 
         if (v.id === following) {
           signal.visible = true;
           signal.position.copy(group.position); signal.position.z += .2;
-          signal.scale.setScalar(23 * scale);
+          signal.scale.setScalar(15 * scale);
           signalMaterial.uniforms.color.value.set(v.color);
           signalMaterial.uniforms.time.value = reducedMotion.matches ? 0.8 : now - signalStart;
         }
