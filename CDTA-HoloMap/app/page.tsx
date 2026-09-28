@@ -7,6 +7,7 @@ import type { HoloVehicle } from '@/lib/hologram-map';
 import { Checkbox } from '@/components/ui/checkbox';
 import routeData from '@/data/routes.json';
 import { freshVehicles, MAX_AGE } from '@/lib/vehicles.mjs';
+import { followCenter } from '@/lib/follow-camera.mjs';
 import { enableTrackpadRotation } from '@/lib/trackpad.mjs';
 import { updateMotion, positionAt } from '@/lib/motion.mjs';
 
@@ -40,17 +41,16 @@ export default function Home() {
   const holograms = useRef<HoloVehicle[]>([]);
   const [following, setFollowing] = useState<string | null>(null);
   const followingRef = useRef<string | null>(null);
+  const followTransition = useRef<{ origin: [number, number]; started: number } | null>(null);
   function followBus(id: string | null) {
+    if (id === followingRef.current) return;
+    const center = map.current?.getCenter();
+    followTransition.current = id && center ? {
+      origin: [center.lng, center.lat], started: performance.now(),
+    } : null;
     followingRef.current = id;
     setFollowing(id);
-    if (id && map.current) {
-      map.current.stop();
-      const model = motion.current.get(id);
-      if (model) {
-        const [lat, lng] = positionAt(model, Date.now() / 1000);
-        map.current.jumpTo({ center: [lng, lat] });
-      }
-    }
+    if (id) map.current?.stop();
   }
   const [flat, setFlat] = useState(false);
   const [camera, setCamera] = useState({ lat: 42.66, lng: -73.76, bearing: -25 });
@@ -74,7 +74,8 @@ export default function Home() {
           const time = Date.now() / 1000;
           if (!model || time - model.report.timestamp > MAX_AGE) return {};
           const [lat, lng] = positionAt(model, time);
-          return { center: new GL.LngLat(lng, lat) };
+          const [centerLng, centerLat] = followCenter([lng, lat], followTransition.current, performance.now());
+          return { center: new GL.LngLat(centerLng, centerLat) };
         },
         maxPitch: 75, canvasContextAttributes: { antialias: true }, attributionControl: { compact: true } });
       map.current = instance;

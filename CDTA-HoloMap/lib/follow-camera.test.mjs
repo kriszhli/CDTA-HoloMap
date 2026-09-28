@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import { followCenter } from './follow-camera.mjs';
+const transition = { origin: [-73.8, 42.6], started: 1000 };
+const target = [-73.7, 42.7];
+assert.deepEqual(followCenter(target, transition, 1000), transition.origin, 'No snap on selection');
+const middle = followCenter(target, transition, 1425);
+assert.ok(Math.abs(middle[0] + 73.75) < 1e-10);
+assert.ok(Math.abs(middle[1] - 42.65) < 1e-10);
+const movingTarget = [-73.69, 42.71];
+assert.deepEqual(followCenter(movingTarget, transition, 1850), movingTarget, 'Arrives at the current bus position');
+assert.deepEqual(followCenter(movingTarget, transition, 2500), movingTarget, 'Continuous tracking after transition');
+assert.deepEqual(followCenter(target, null, 1000), target);
+console.log('Follow-camera checks passed: continuous start, easing, moving target, tracking handoff.');
