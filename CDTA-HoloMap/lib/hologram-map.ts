@@ -101,7 +101,11 @@ export function createBusLayer(getVehicles: () => HoloVehicle[], onSelect: (id: 
         group.scale.setScalar(scale); group.rotation.z = -bearing;
       }
       camera.projectionMatrix.fromArray(args.defaultProjectionData.mainMatrix).multiply(world);
-      renderer.resetState(); renderer.render(scene, camera);
+      renderer.resetState();
+      // Buses are tracking overlays: keep the translucent city color, but discard
+      // its depth so buildings cannot hide vehicles. Buses retain their own depth.
+      renderer.clearDepth();
+      renderer.render(scene, camera);
       if (vehicles.length && !document.hidden) map.triggerRepaint();
     },
     onRemove() {
