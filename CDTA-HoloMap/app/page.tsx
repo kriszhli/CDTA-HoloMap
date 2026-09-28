@@ -43,7 +43,14 @@ export default function Home() {
   function followBus(id: string | null) {
     followingRef.current = id;
     setFollowing(id);
-    if (id) map.current?.stop();
+    if (id && map.current) {
+      map.current.stop();
+      const model = motion.current.get(id);
+      if (model) {
+        const [lat, lng] = positionAt(model, Date.now() / 1000);
+        map.current.jumpTo({ center: [lng, lat] });
+      }
+    }
   }
   const [flat, setFlat] = useState(false);
   const [camera, setCamera] = useState({ lat: 42.66, lng: -73.76, bearing: -25 });
@@ -81,20 +88,10 @@ export default function Home() {
         instance.addLayer({ id: 'route-lines', type: 'line', source: 'selected-paths', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': 3, 'line-opacity': .55 } });
         instance.addSource('selected-stops', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
         instance.addLayer({ id: 'stop-circles', type: 'circle', source: 'selected-stops', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 16, 4], 'circle-color': '#0b191f', 'circle-stroke-color': ['get', 'color'], 'circle-stroke-width': 1.5, 'circle-pitch-alignment': 'map' } });
-        instance.addLayer(holo.createBusLayer(() => holograms.current));
+        instance.addLayer(holo.createBusLayer(() => holograms.current, followBus));
         setReady(true);
       });
       instance.on('dragstart', () => followBus(null));
-      instance.on('click', event => {
-        // The models are enlarged map symbols; allow clicking their ground position too.
-        let nearest: string | null = null, distance = 30;
-        for (const [id, marker] of markers.current) {
-          const point = instance.project(marker.getLngLat());
-          const delta = Math.hypot(point.x - event.point.x, point.y - event.point.y);
-          if (delta < distance) { nearest = id; distance = delta; }
-        }
-        if (nearest) followBus(nearest);
-      });
       instance.on('error', () => setMapError('Some map details could not load. Check your connection and reload.'));
       instance.on('move', () => {
         const center = instance.getCenter();
@@ -208,7 +205,10 @@ export default function Home() {
       if (!marker) {
         const badge = document.createElement('button');
         badge.className = 'bus-marker';
-        badge.addEventListener('click', () => followBus(v.id));
+        badge.addEventListener('click', event => {
+          event.stopPropagation();
+          followBus(v.id);
+        });
         const model = motion.current.get(v.id);
         const [lat, lng] = model ? positionAt(model, Date.now() / 1000) : [v.lat, v.lng];
         marker = new GL.Marker({ element: badge, anchor: 'bottom', offset: [0, -36] }).setLngLat([lng, lat]).addTo(instance);

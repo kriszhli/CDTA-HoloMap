@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import { PerspectiveCamera, Group, Mesh, BoxGeometry, MeshBasicMaterial, DoubleSide, Vector3 } from 'three';
+import { pickBus } from './pick-bus.mjs';
+const camera = new PerspectiveCamera(60, 1, .1, 1000);
+const bus = new Group(); bus.userData.busId = 'real-bus';
+const geometry = new BoxGeometry(12, 3, 3), material = new MeshBasicMaterial({side: DoubleSide});
+bus.add(new Mesh(geometry, material)); bus.position.set(0, 0, -15); bus.updateMatrixWorld(true);
+const front = new Vector3(5, 0, -13.5).project(camera);
+const point = { x: (front.x + 1) * 400, y: (1 - front.y) * 400 };
+assert.ok(point.x - 400 > 30, 'Visible bus body extends past the old ground hit radius');
+assert.equal(pickBus(point, 800, 800, camera.projectionMatrix, [bus]), 'real-bus');
+assert.equal(pickBus({x:0,y:0}, 800, 800, camera.projectionMatrix, [bus]), null);
+bus.rotation.z = Math.PI / 2; bus.updateMatrixWorld(true);
+assert.equal(pickBus({x:400,y:400}, 800, 800, camera.projectionMatrix, [bus]), 'real-bus');
+geometry.dispose(); material.dispose();
+console.log('Bus picking checks passed: visible body beyond old hit radius, empty map, rotated model.');

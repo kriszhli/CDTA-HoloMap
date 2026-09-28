@@ -5,6 +5,7 @@ import * as THREE from 'three';
 // Serving them intact avoids framework dev overlays being injected into a worker.
 export const workerUrl = '/vendor/maplibre/maplibre-gl-worker.mjs';
 import { poseAt, updateMotion } from './motion.mjs';
+import { pickBus } from './pick-bus.mjs';
 import { MAX_AGE } from './vehicles.mjs';
 
 export const mapStyle: StyleSpecification = {
@@ -30,7 +31,7 @@ type Motion = ReturnType<typeof updateMotion>;
 export type HoloVehicle = { id: string; color: string; model: Motion };
 
 // Metre-sized geometry, enlarged at network zooms so each bus remains legible.
-export function createBusLayer(getVehicles: () => HoloVehicle[]): CustomLayerInterface {
+export function createBusLayer(getVehicles: () => HoloVehicle[], onSelect: (id: string) => void): CustomLayerInterface {
   const scene = new THREE.Scene();
   const camera = new THREE.Camera();
   const origin = maplibregl.MercatorCoordinate.fromLngLat([-73.76, 42.66]);
@@ -44,12 +45,18 @@ export function createBusLayer(getVehicles: () => HoloVehicle[]): CustomLayerInt
   let renderer: THREE.WebGLRenderer;
   let map: maplibregl.Map;
 
+  function selectBus(event: maplibregl.MapMouseEvent) {
+    const canvas = map.getCanvas();
+    const id = pickBus(event.point, canvas.clientWidth, canvas.clientHeight, camera.projectionMatrix, [...buses.values()].map(bus => bus.group));
+    if (id) onSelect(id);
+  }
   function removeBus(id: string) {
     const bus = buses.get(id)!;
     scene.remove(bus.group); bus.materials.forEach(m => m.dispose()); buses.delete(id);
   }
   function addBus(id: string, color: string) {
     const group = new THREE.Group();
+    group.userData.busId = id;
     const shell = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .26, depthWrite: false, side: THREE.DoubleSide });
     const wire = new THREE.LineBasicMaterial({ color, transparent: true, opacity: .95 });
     const glass = new THREE.MeshBasicMaterial({ color: '#d9fcff', transparent: true, opacity: .48, depthWrite: false });
@@ -77,6 +84,7 @@ export function createBusLayer(getVehicles: () => HoloVehicle[]): CustomLayerInt
       map = instance;
       renderer = new THREE.WebGLRenderer({ canvas: map.getCanvas(), context: gl as WebGL2RenderingContext, antialias: true });
       renderer.autoClear = false;
+      map.on('click', selectBus);
     },
     render(_gl, args) {
       const now = Date.now() / 1000;
@@ -97,6 +105,7 @@ export function createBusLayer(getVehicles: () => HoloVehicle[]): CustomLayerInt
       if (vehicles.length && !document.hidden) map.triggerRepaint();
     },
     onRemove() {
+      map.off('click', selectBus);
       for (const id of buses.keys()) removeBus(id);
       box.dispose(); edges.dispose(); wheel.dispose(); ring.dispose(); renderer?.dispose();
     },
