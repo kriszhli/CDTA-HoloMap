@@ -5,7 +5,7 @@ let bearing = 25, zoom = 15, pitch = 0, following = true;
 const pans = [];
 const map = { getCanvas: () => canvas, getBearing: () => bearing, getZoom: () => zoom,
   stop() {}, panBy: offset => pans.push(offset),
-  jumpTo: options => { bearing = options.bearing; zoom = options.zoom; assert.equal(options.pitch, undefined); } };
+  jumpTo: options => { bearing = options.bearing; if (options.zoom !== undefined) zoom = options.zoom; assert.equal(options.pitch, undefined); } };
 const cleanup = enableTrackpadRotation(map, () => { following = false; });
 function send(name, values = {}) {
   const event = new Event(name, { cancelable: true });
@@ -29,6 +29,21 @@ for (pitch of [0, 60]) {
   send('gesturechange', { rotation: NaN, scale: 0 }); assert.equal(zoom, before.zoom);
   send('gestureend');
 }
+for (const values of [{deltaY: 50}, {deltaX: 50}, {deltaY: 50, ctrlKey: true}]) {
+  following = true;
+  const before = { bearing, zoom, pans: pans.length };
+  assert.ok(send('wheel', { ...values, shiftKey: true }));
+  assert.equal(bearing, before.bearing + 10);
+  assert.equal(zoom, before.zoom, 'Shift never zooms, including trackpad pinch wheel events');
+  assert.equal(pans.length, before.pans); assert.ok(following);
+}
+const previousZoom = zoom;
+send('gesturestart');
+send('gesturechange', {rotation: 20, scale: 2, shiftKey: true});
+assert.equal(zoom, previousZoom, 'Shift blocks native gesture zoom');
+send('gesturechange', {rotation: 20, scale: 2});
+assert.equal(zoom, previousZoom, 'Releasing Shift does not jump to the suppressed zoom');
+send('gestureend');
 assert.equal(send('wheel', { deltaY: 5, ctrlKey: true }), false);
 cleanup(); assert.equal(send('wheel', { deltaX: 50 }), false);
 assert.equal(send('gesturestart'), false);
