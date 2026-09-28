@@ -89,7 +89,7 @@ export default function Home() {
         instance.addLayer({ id: 'route-lines', type: 'line', source: 'selected-paths', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': 3, 'line-opacity': .55 } });
         instance.addSource('selected-stops', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
         instance.addLayer({ id: 'stop-circles', type: 'circle', source: 'selected-stops', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 16, 4], 'circle-color': '#0b191f', 'circle-stroke-color': ['get', 'color'], 'circle-stroke-width': 1.5, 'circle-pitch-alignment': 'map' } });
-        instance.addLayer(holo.createBusLayer(() => holograms.current, followBus));
+        instance.addLayer(holo.createBusLayer(() => holograms.current, followBus, () => followingRef.current));
         setReady(true);
       });
       instance.on('dragstart', () => followBus(null));

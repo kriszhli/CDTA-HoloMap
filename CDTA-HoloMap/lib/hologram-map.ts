@@ -31,7 +31,7 @@ type Motion = ReturnType<typeof updateMotion>;
 export type HoloVehicle = { id: string; color: string; model: Motion };
 
 // Metre-sized geometry, enlarged at network zooms so each bus remains legible.
-export function createBusLayer(getVehicles: () => HoloVehicle[], onSelect: (id: string) => void): CustomLayerInterface {
+export function createBusLayer(getVehicles: () => HoloVehicle[], onSelect: (id: string) => void, getFollowing: () => string | null): CustomLayerInterface {
   const scene = new THREE.Scene();
   const camera = new THREE.Camera();
   const origin = maplibregl.MercatorCoordinate.fromLngLat([-73.76, 42.66]);
@@ -41,6 +41,31 @@ export function createBusLayer(getVehicles: () => HoloVehicle[], onSelect: (id: 
   const edges = new THREE.EdgesGeometry(box);
   const wheel = new THREE.CylinderGeometry(.48, .48, .22, 12);
   const ring = new THREE.RingGeometry(7.5, 7.65, 48);
+  // A single ground-plane light effect follows the selected vehicle. It is kept
+  // outside the pickable bus groups so the expanding halo never intercepts clicks.
+  const signalGeometry = new THREE.PlaneGeometry(2, 2);
+  const signalMaterial = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+    uniforms: { color: { value: new THREE.Color() }, time: { value: 0 } },
+    vertexShader: `varying vec2 uvPosition;
+      void main() { uvPosition = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `uniform vec3 color; uniform float time; varying vec2 uvPosition;
+      void main() {
+        float radius = length(uvPosition - 0.5) * 2.0;
+        float light = 0.07 * exp(-radius * 4.0);
+        for (int i = 0; i < 3; i++) {
+          float phase = fract(time / 2.4 + float(i) / 3.0);
+          float wave = (radius - mix(0.16, 0.96, phase)) / 0.025;
+          light += exp(-wave * wave) * (1.0 - phase) * 0.55;
+        }
+        gl_FragColor = vec4(color, light * (1.0 - smoothstep(0.95, 1.0, radius)));
+      }`,
+  });
+  const signal = new THREE.Mesh(signalGeometry, signalMaterial);
+  signal.visible = false; signal.renderOrder = -1; scene.add(signal);
+  let signalId: string | null = null, signalStart = 0;
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const buses = new Map<string, { group: THREE.Group; color: string; materials: THREE.Material[] }>();
   let renderer: THREE.WebGLRenderer;
   let map: maplibregl.Map;
@@ -91,6 +116,9 @@ export function createBusLayer(getVehicles: () => HoloVehicle[], onSelect: (id: 
       const vehicles = getVehicles().filter(v => now - v.model.report.timestamp <= MAX_AGE && v.model.report.timestamp <= now + 30);
       const ids = new Set(vehicles.map(v => v.id));
       for (const id of buses.keys()) if (!ids.has(id)) removeBus(id);
+      const following = getFollowing();
+      if (following !== signalId) { signalId = following; signalStart = now; }
+      signal.visible = false;
       const scale = Math.max(1.5, Math.min(64, 2 ** (17.8 - map.getZoom())));
       for (const v of vehicles) {
         if (buses.has(v.id) && buses.get(v.id)!.color !== v.color) removeBus(v.id);
@@ -99,6 +127,13 @@ export function createBusLayer(getVehicles: () => HoloVehicle[], onSelect: (id: 
         const coordinate = maplibregl.MercatorCoordinate.fromLngLat([lng, lat]);
         group.position.set((coordinate.x - origin.x) / metre, -(coordinate.y - origin.y) / metre, 1);
         group.scale.setScalar(scale); group.rotation.z = -bearing;
+        if (v.id === following) {
+          signal.visible = true;
+          signal.position.copy(group.position); signal.position.z += .2;
+          signal.scale.setScalar(23 * scale);
+          signalMaterial.uniforms.color.value.set(v.color);
+          signalMaterial.uniforms.time.value = reducedMotion.matches ? 0.8 : now - signalStart;
+        }
       }
       camera.projectionMatrix.fromArray(args.defaultProjectionData.mainMatrix).multiply(world);
       renderer.resetState();
@@ -111,6 +146,7 @@ export function createBusLayer(getVehicles: () => HoloVehicle[], onSelect: (id: 
     onRemove() {
       map.off('click', selectBus);
       for (const id of buses.keys()) removeBus(id);
+      signalGeometry.dispose(); signalMaterial.dispose();
       box.dispose(); edges.dispose(); wheel.dispose(); ring.dispose(); renderer?.dispose();
     },
   };
